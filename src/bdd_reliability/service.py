@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import random
 import time
 from collections import deque
 from typing import Dict, List, Optional, Tuple
@@ -11,10 +10,9 @@ from .utils import StageProfile
 
 
 class ReliabilityService:
-    def __init__(self, max_bdd_nodes: int = 200000, max_paths_per_pair: int = 400, mc_samples: int = 20000):
+    def __init__(self, max_bdd_nodes: int = 200000, max_paths_per_pair: int = 400):
         self.max_bdd_nodes = max_bdd_nodes
         self.max_paths_per_pair = max_paths_per_pair
-        self.mc_samples = mc_samples
 
     def calculate(self, topo: Topology) -> float:
         result, _ = self.calculate_with_profile(topo)
@@ -38,40 +36,26 @@ class ReliabilityService:
             p_up[edge_vars[e.id]] = self._prob(e.reliability)
         t1 = time.perf_counter()
 
-        try:
-            c_subset = self._subset_constraint(bdd, node_vars, topo.constraints, topo)
-            self._guard_bdd_size(bdd)
-            c_global = self._global_constraint(bdd, node_vars, topo.constraints, len(topo.nodes))
-            self._guard_bdd_size(bdd)
-            c_conn = self._connectivity_constraint(bdd, topo, node_vars, edge_vars)
-            self._guard_bdd_size(bdd)
-            root = bdd.bdd_and(bdd.bdd_and(c_subset, c_global), c_conn)
-            self._guard_bdd_size(bdd)
-            t2 = time.perf_counter()
+        c_subset = self._subset_constraint(bdd, node_vars, topo.constraints, topo)
+        self._guard_bdd_size(bdd)
+        c_global = self._global_constraint(bdd, node_vars, topo.constraints, len(topo.nodes))
+        self._guard_bdd_size(bdd)
+        c_conn = self._connectivity_constraint(bdd, topo, node_vars, edge_vars)
+        self._guard_bdd_size(bdd)
+        root = bdd.bdd_and(bdd.bdd_and(c_subset, c_global), c_conn)
+        self._guard_bdd_size(bdd)
+        t2 = time.perf_counter()
 
-            result = bdd.evaluate_probability(root, p_up)
-            t3 = time.perf_counter()
-            profile = StageProfile(
-                build_vars_ms=(t1 - t0) * 1000,
-                build_constraints_ms=(t2 - t1) * 1000,
-                probability_ms=(t3 - t2) * 1000,
-                total_ms=(t3 - total_start) * 1000,
-                bdd_nodes=len(bdd.nodes) + 2,
-            )
-            return result, profile
-        except (MemoryError, OverflowError, RuntimeError):
-            # fallback to Monte-Carlo estimation when exact BDD becomes intractable
-            t2 = time.perf_counter()
-            result = self._monte_carlo_reliability(topo, p_up, node_vars, edge_vars)
-            t3 = time.perf_counter()
-            profile = StageProfile(
-                build_vars_ms=(t1 - t0) * 1000,
-                build_constraints_ms=(t2 - t1) * 1000,
-                probability_ms=(t3 - t2) * 1000,
-                total_ms=(t3 - total_start) * 1000,
-                bdd_nodes=len(bdd.nodes) + 2,
-            )
-            return result, profile
+        result = bdd.evaluate_probability(root, p_up)
+        t3 = time.perf_counter()
+        profile = StageProfile(
+            build_vars_ms=(t1 - t0) * 1000,
+            build_constraints_ms=(t2 - t1) * 1000,
+            probability_ms=(t3 - t2) * 1000,
+            total_ms=(t3 - total_start) * 1000,
+            bdd_nodes=len(bdd.nodes) + 2,
+        )
+        return result, profile
 
     def _guard_bdd_size(self, bdd: ROBDD) -> None:
         if len(bdd.nodes) > self.max_bdd_nodes:
@@ -183,64 +167,4 @@ class ReliabilityService:
                 q.append((nxt, path + [nxt]))
         return out
 
-    def _monte_carlo_reliability(self, topo: Topology, p_up: Dict[int, float],
-                                 node_vars: Dict[str, int], edge_vars: Dict[str, int]) -> float:
-        rnd = random.Random(42)
-        success = 0
-        constraints = topo.constraints
-        node_ids = [n.id for n in topo.nodes]
-        edge_list = topo.edges
 
-        for _ in range(self.mc_samples):
-            node_up = {nid: rnd.random() <= p_up[node_vars[nid]] for nid in node_ids}
-            edge_up = {e.id: rnd.random() <= p_up[edge_vars[e.id]] for e in edge_list}
-            if self._satisfies_constraints_sample(topo, node_up, edge_up, constraints):
-                success += 1
-        return success / float(self.mc_samples)
-
-    def _satisfies_constraints_sample(self, topo: Topology, node_up: Dict[str, bool], edge_up: Dict[str, bool],
-                                      c: Constraints) -> bool:
-        if c.subset_nodes and c.subset_max_fail is not None:
-            subset_fail = sum(1 for nid in c.subset_nodes if not node_up.get(nid, False))
-            if subset_fail > c.subset_max_fail:
-                return False
-
-        if c.max_fail_nodes is not None:
-            global_fail = sum(1 for n in topo.nodes if not node_up.get(n.id, False))
-            if global_fail > c.max_fail_nodes:
-                return False
-
-        hop = c.nodes_max_hops if c.nodes_max_hops is not None else len(topo.nodes)
-        hop = max(1, min(hop, len(topo.nodes)))
-
-        active_nodes = [n.id for n in topo.nodes if node_up.get(n.id, False)]
-        if len(active_nodes) <= 1:
-            return True
-
-        neighbors: Dict[str, List[str]] = {n.id: [] for n in topo.nodes}
-        for e in topo.edges:
-            if edge_up.get(e.id, False) and node_up.get(e.source, False) and node_up.get(e.target, False):
-                neighbors[e.source].append(e.target)
-                neighbors[e.target].append(e.source)
-
-        for i in range(len(active_nodes)):
-            for j in range(i + 1, len(active_nodes)):
-                if not self._reachable_within_hops(active_nodes[i], active_nodes[j], hop, neighbors):
-                    return False
-        return True
-
-    def _reachable_within_hops(self, src: str, dst: str, hop: int, neighbors: Dict[str, List[str]]) -> bool:
-        q = deque([(src, 0)])
-        visited = {src}
-        while q:
-            cur, dist = q.popleft()
-            if cur == dst:
-                return True
-            if dist >= hop:
-                continue
-            for nxt in neighbors[cur]:
-                if nxt in visited:
-                    continue
-                visited.add(nxt)
-                q.append((nxt, dist + 1))
-        return False
