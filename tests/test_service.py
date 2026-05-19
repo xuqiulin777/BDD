@@ -1,3 +1,4 @@
+import pytest
 import os
 import sys
 
@@ -54,3 +55,13 @@ def test_key_node_subset_limit_supported():
     # both key nodes always fail; key fail upper bound=1 => reliability should be 0
     r = ReliabilityService().calculate(topo)
     assert abs(r - 0.0) < 1e-12
+
+
+def test_global_max_fail_required():
+    topo = Topology(
+        nodes=[Node("A", 1.0), Node("B", 1.0)],
+        edges=[Edge("e1", "A", "B", 1.0)],
+        constraints=Constraints(nodes_max_hops=1),
+    )
+    with pytest.raises(ValueError):
+        ReliabilityService().calculate(topo)

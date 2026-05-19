@@ -20,6 +20,8 @@ class ReliabilityService:
 
     def calculate_with_profile(self, topo: Topology) -> Tuple[float, StageProfile]:
         total_start = time.perf_counter()
+        if topo.constraints.max_fail_nodes is None:
+            raise ValueError("constraints.max_fail_nodes is required")
         if not topo.nodes or not topo.edges:
             profile = StageProfile(0.0, 0.0, 0.0, 0.0, 0)
             return 0.0, profile
@@ -96,8 +98,9 @@ class ReliabilityService:
         return self._at_most_k_fail(bdd, vars_, c.subset_max_fail)
 
     def _global_constraint(self, bdd: ROBDD, node_vars: Dict[str, int], c: Constraints, n: int) -> int:
-        k = c.max_fail_nodes if c.max_fail_nodes is not None else n
-        return self._at_most_k_fail(bdd, list(node_vars.values()), k)
+        if c.max_fail_nodes is None:
+            raise ValueError("constraints.max_fail_nodes is required")
+        return self._at_most_k_fail(bdd, list(node_vars.values()), c.max_fail_nodes)
 
     def _connectivity_constraint(self, bdd: ROBDD, topo: Topology,
                                  node_vars: Dict[str, int], edge_vars: Dict[str, int]) -> int:
