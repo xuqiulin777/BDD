@@ -1,46 +1,38 @@
-# Python BDD 网络可靠度计算工程
+# Python BDD 网络可靠度计算工程（GUI版）
 
-这是一个可直接运行的 Python 工程，包含：
-- 基于 ROBDD 的网络可靠度计算核心算法。
-- 可视化 UI（Streamlit）用于输入拓扑、约束并输出可靠度。
-- 随机拓扑生成与压测页面。
-- 分阶段性能剖析（变量构建、约束构建、概率求值、总耗时、BDD 节点数）。
+本项目提供桌面 GUI（Tkinter）用于：
+- 图形化交互绘制网络拓扑（点击添加节点、两次点击添加边）
+- 矩阵方式快速生成拓扑（例如 10×2，相邻节点自动连边）
+- 计算网络可靠度并展示性能指标
 
 ## 运行方式
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-streamlit run ui/app.py
+python ui/gui_app.py
 ```
 
-## UI 功能
+## GUI 核心功能
 
-### 1) 手工输入计算
-- 输入 JSON 后点击“计算可靠度”
-- 输出：可靠度 + profiling 指标
+1. **交互式绘图**
+   - “添加节点”模式：在画布点击添加节点
+   - “添加边”模式：依次点击两个节点建立连边
 
-### 2) 随机拓扑压测
-- 配置节点数、边数、随机种子、重复次数
-- 点击“生成并压测”后输出多轮耗时与结果表
-- 展示最近一次随机拓扑 JSON，便于复制到手工页复现
+2. **矩阵拓扑生成**
+   - 输入行、列（如 10 和 2）
+   - 点击“生成网格并连接相邻节点”
+   - 自动创建规则拓扑并绘制
 
-## 输入格式
+3. **可靠度计算**
+   - 设置 `最大失效节点数`、`最大跳数`
+   - 点击“计算可靠度”查看结果和分阶段耗时
 
-- `nodes`: `[{id, reliability}]`
-- `edges`: `[{id, source, target, reliability}]`
-- `constraints`:
-  - `subset_nodes`
-  - `subset_max_fail`
-  - `max_fail_nodes`
-  - `nodes_max_hops`
+## 主要文件
 
-`reliability` 支持 0~1 或百分比（如 `95`）。
-
-## 核心文件
-
-- `src/bdd_reliability/robdd.py`: ROBDD 引擎（唯一表、apply、概率求值）
-- `src/bdd_reliability/service.py`: 网络可靠度建模（约束 + 连通性 + 概率 + profiling）
-- `src/bdd_reliability/utils.py`: 随机拓扑生成、profiling 数据结构
-- `ui/app.py`: 图形化输入与压测页面
+- `ui/gui_app.py`: Tkinter GUI 主程序
+- `src/bdd_reliability/service.py`: 可靠度计算服务
+- `src/bdd_reliability/robdd.py`: ROBDD 基础实现
+- `src/bdd_reliability/model.py`: 数据模型
+- `src/bdd_reliability/utils.py`: 工具函数与随机拓扑生成
