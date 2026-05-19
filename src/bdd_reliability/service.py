@@ -39,7 +39,7 @@ class ReliabilityService:
         t1 = time.perf_counter()
 
         try:
-            c_subset = self._subset_constraint(bdd, node_vars, topo.constraints)
+            c_subset = self._subset_constraint(bdd, node_vars, topo.constraints, topo)
             self._guard_bdd_size(bdd)
             c_global = self._global_constraint(bdd, node_vars, topo.constraints, len(topo.nodes))
             self._guard_bdd_size(bdd)
@@ -104,10 +104,11 @@ class ReliabilityService:
             res = bdd.bdd_or(res, e)
         return res
 
-    def _subset_constraint(self, bdd: ROBDD, node_vars: Dict[str, int], c: Constraints) -> int:
-        if c.subset_max_fail is None or not c.subset_nodes:
+    def _subset_constraint(self, bdd: ROBDD, node_vars: Dict[str, int], c: Constraints, topo: Topology) -> int:
+        subset_ids = list(c.subset_nodes) if c.subset_nodes else [n.id for n in topo.nodes if getattr(n, "node_type", "normal") == "key"]
+        if c.subset_max_fail is None or not subset_ids:
             return ROBDD.TRUE
-        vars_ = [node_vars[nid] for nid in c.subset_nodes if nid in node_vars]
+        vars_ = [node_vars[nid] for nid in subset_ids if nid in node_vars]
         return self._at_most_k_fail(bdd, vars_, c.subset_max_fail)
 
     def _global_constraint(self, bdd: ROBDD, node_vars: Dict[str, int], c: Constraints, n: int) -> int:

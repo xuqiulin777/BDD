@@ -41,13 +41,16 @@ def test_profile_and_random_topology():
     assert prof.bdd_nodes >= 2
 
 
-def test_fallback_monte_carlo_when_bdd_limit_tight():
-    payload = random_topology(node_count=7, edge_count=11, seed=2)
+def test_key_node_subset_limit_supported():
     topo = Topology(
-        nodes=[Node(**n) for n in payload["nodes"]],
-        edges=[Edge(**e) for e in payload["edges"]],
-        constraints=Constraints(**payload["constraints"]),
+        nodes=[
+            Node("K1", 0.0, "key"),
+            Node("K2", 0.0, "key"),
+            Node("N1", 1.0, "normal"),
+        ],
+        edges=[Edge("e1", "K1", "N1", 1.0), Edge("e2", "K2", "N1", 1.0)],
+        constraints=Constraints(subset_max_fail=1, max_fail_nodes=3, nodes_max_hops=2),
     )
-    service = ReliabilityService(max_bdd_nodes=10, mc_samples=1000)
-    r, _ = service.calculate_with_profile(topo)
-    assert 0.0 <= r <= 1.0
+    # both key nodes always fail; key fail upper bound=1 => reliability should be 0
+    r = ReliabilityService().calculate(topo)
+    assert abs(r - 0.0) < 1e-12

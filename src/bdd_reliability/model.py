@@ -6,6 +6,7 @@ from typing import List, Optional
 class Node:
     id: str
     reliability: float = 1.0
+    node_type: str = "normal"  # normal | key
 
 
 @dataclass
