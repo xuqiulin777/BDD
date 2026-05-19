@@ -39,3 +39,15 @@ def test_profile_and_random_topology():
     assert 0.0 <= r <= 1.0
     assert prof.total_ms >= 0
     assert prof.bdd_nodes >= 2
+
+
+def test_fallback_monte_carlo_when_bdd_limit_tight():
+    payload = random_topology(node_count=7, edge_count=11, seed=2)
+    topo = Topology(
+        nodes=[Node(**n) for n in payload["nodes"]],
+        edges=[Edge(**e) for e in payload["edges"]],
+        constraints=Constraints(**payload["constraints"]),
+    )
+    service = ReliabilityService(max_bdd_nodes=10, mc_samples=1000)
+    r, _ = service.calculate_with_profile(topo)
+    assert 0.0 <= r <= 1.0
